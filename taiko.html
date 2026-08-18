@@ -124,6 +124,25 @@
   .reopen{display:flex;justify-content:center;padding:8px 0 2px}
   .reopen button{background:none;border:none;color:var(--kin);font-size:12px;letter-spacing:.1em;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
 
+  .listbtn{background:none;border:1px solid var(--line);color:var(--kin);font-size:11px;letter-spacing:.12em;padding:8px 11px;cursor:pointer}
+  .sheet{position:fixed;inset:0;background:var(--ai);z-index:70;display:none;flex-direction:column;
+         padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+  .sheet.on{display:flex}
+  .sheet-bar{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--line);flex:none}
+  .sheet-bar b{font-family:var(--mincho);font-size:18px;letter-spacing:.2em;font-weight:700}
+  .sheet-bar .tot{font-size:11px;letter-spacing:.12em;color:var(--sumi)}
+  .sheet-close{background:none;border:none;color:var(--kin);font-size:28px;line-height:1;cursor:pointer;padding:2px 6px}
+  .plist{list-style:none;flex:1;overflow:auto;padding:12px 14px calc(24px + env(safe-area-inset-bottom))}
+  .prow{display:flex;align-items:center;gap:12px;width:100%;text-align:left;cursor:pointer;
+        background:var(--ai-2);border:1px solid var(--line);border-left:4px solid var(--line);padding:15px 14px;margin-bottom:8px}
+  .prow .pban{font-family:var(--mincho);font-weight:700;font-size:14px;color:var(--kin);width:46px;flex:none;text-align:center}
+  .prow .pname{flex:1;font-family:var(--mincho);font-size:20px;letter-spacing:.12em}
+  .prow .pst{font-size:11px;letter-spacing:.14em;color:var(--sumi);flex:none}
+  .prow.done{border-left-color:var(--moegi)}
+  .prow.done .pname{color:var(--sumi)} .prow.done .pst{color:var(--moegi)}
+  .prow.now{border-color:var(--shu);border-left-color:var(--shu);background:#2A1B22}
+  .prow.now .pban{color:var(--shu)} .prow.now .pname{color:var(--kinari);font-weight:800} .prow.now .pst{color:var(--shu);font-weight:700}
+
   .toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);
          background:#0E1626;border:1px solid var(--kin);color:var(--kinari);padding:12px 18px;font-size:13px;letter-spacing:.06em;
          z-index:60;opacity:0;pointer-events:none;transition:opacity .25s;max-width:88%;text-align:center}
@@ -137,6 +156,7 @@
   <div class="bar" style="--accent:var(--moegi)">
     <div class="role">太鼓台</div>
     <div class="side">
+      <button class="listbtn" id="listBtn" hidden>演目一覧</button>
       <div class="kumi">組<input id="kumiIn" value="01" maxlength="6" inputmode="text" autocomplete="off" autocapitalize="off"></div>
       <div class="conn"><i class="dot wait" id="dot"></i><span id="stat">—</span></div>
     </div>
@@ -169,6 +189,14 @@
       <div class="reopen"><button id="reopen">待機に戻る</button></div>
     </div>
   </div>
+</div>
+<div class="sheet" id="sheet">
+  <div class="sheet-bar">
+    <b>演目 一覧</b>
+    <span class="tot" id="sheetTot"></span>
+    <button class="sheet-close" id="sheetClose" aria-label="閉じる">×</button>
+  </div>
+  <ul class="plist" id="plist"></ul>
 </div>
 <div class="toast" id="toast"></div>
 <script>
@@ -260,8 +288,32 @@
     if(announce) toast(list.length+"演目を読み込みました");
   }
   function pubState(){ var done=cur>=list.length; Sync.pub("state",{round:round,i:Math.min(cur,list.length-1),done:done}); }
+
+  /* ── 演目一覧 ── */
+  function renderList(){
+    var done=cur>=list.length;
+    $("sheetTot").textContent=list.length?(done?"全"+list.length+"演目 おわり":(Math.min(cur,list.length-1)+1)+" ／ "+list.length):"";
+    var ul=$("plist"); ul.innerHTML="";
+    list.forEach(function(nm,k){
+      var li=document.createElement("li");
+      var b=document.createElement("button");
+      b.className="prow"+(!done&&k===cur?" now":(k<cur?" done":""));
+      b.innerHTML='<span class="pban">'+kan(k)+'番</span><span class="pname"></span><span class="pst"></span>';
+      b.querySelector(".pname").textContent=nm;
+      b.querySelector(".pst").textContent=(!done&&k===cur)?"いま":(k<cur?"済":"");
+      b.addEventListener("click",function(){ cur=k; draw(true); pubState(); closeList(); });
+      li.appendChild(b); ul.appendChild(li);
+    });
+  }
+  function openList(){ if(!list.length) return; renderList(); $("sheet").classList.add("on"); }
+  function closeList(){ $("sheet").classList.remove("on"); }
+  $("listBtn").addEventListener("click",openList);
+  $("sheetClose").addEventListener("click",closeList);
+
   function draw(animate){
-    if(!list.length){ $("wait").hidden=false; $("fuda").hidden=true; $("ctrl").hidden=true; return; }
+    if(!list.length){ $("wait").hidden=false; $("fuda").hidden=true; $("ctrl").hidden=true; $("listBtn").hidden=true; return; }
+    $("listBtn").hidden=false;
+    if($("sheet").classList.contains("on")) renderList();
     var done=cur>=list.length, i=Math.min(cur,list.length-1);
     var name=$("name"); name.textContent=done?"了":list[i];
     $("ban").textContent=done?"":kan(i)+"番";
@@ -277,7 +329,7 @@
   }
   $("nextBtn").addEventListener("click",function(){ if(cur<list.length){ cur++; draw(true); pubState(); } });
   $("prev").addEventListener("click",function(){ if(cur>0){ cur--; draw(true); pubState(); } });
-  $("reopen").addEventListener("click",function(){ list=[]; cur=0; draw(false); });
+  $("reopen").addEventListener("click",function(){ list=[]; cur=0; closeList(); draw(false); });
   function readCode(){ var l=codeToProg($("codeIn").value); if(!l.length){ toast("コードを確認してください"); return; }
     load(l,Date.now(),true); $("codeIn").value=""; }
   $("codeGo").addEventListener("click",readCode);
